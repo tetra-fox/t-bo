@@ -40,7 +40,7 @@ impl TypeMapKey for ShardManagerContainer {
 
 #[group]
 #[commands(
-    join, leave, mute, deafen, queue, play, skip, seek, stop, pause, resume, nowplaying
+    join, leave, mute, deafen, queue, play, skip, repeat, seek, stop, pause, resume, nowplaying
 )]
 
 struct General;

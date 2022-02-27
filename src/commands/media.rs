@@ -3,6 +3,8 @@ use std::time::Duration;
 use crate::palette;
 use crate::utils::*;
 
+use url::Url;
+
 use super::voice;
 
 use serenity::{
@@ -18,8 +20,8 @@ use songbird::input::restartable::Restartable;
 #[aliases("p", "bumpthis")]
 #[only_in(guilds)]
 async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
-    let mut url = match args.single::<String>() {
-        Ok(url) => url,
+    let first_arg = match args.single::<String>() {
+        Ok(arg) => arg,
         Err(_) => {
             msgutils::check_msg(
                 msg.channel_id
@@ -27,7 +29,7 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                         msgutils::create_embed_message(
                             m,
                             &String::from("Error"),
-                            &String::from("Invalid syntax. Usage: `bo.play <url|file>`"),
+                            &String::from("Invalid syntax. Usage: `bo.play <query|url|file>`"),
                             palette::RED,
                             Some(msg),
                         );
@@ -35,31 +37,13 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                     })
                     .await,
             );
-
             return Ok(());
         }
     };
 
-    if !url.starts_with("http") && !url.eq("file") {
-        msgutils::check_msg(
-            msg.channel_id
-                .send_message(ctx, |m: &mut CreateMessage| {
-                    msgutils::create_embed_message(
-                        m,
-                        &String::from("Error"),
-                        &String::from("Invalid URL."),
-                        palette::RED,
-                        Some(msg),
-                    );
-                    m
-                })
-                .await,
-        );
+    let mut url = String::default();
 
-        return Ok(());
-    }
-
-    if url.eq("file") {
+    if first_arg.eq("file") {
         url = match msg.attachments.first() {
             Some(attachment) => attachment.url.clone(),
             None => {
@@ -84,7 +68,7 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     }
 
     // if not in voice channel, join command runner's voice channel
-    let handler_lock = match mediautils::get_songbird_manager(
+    let handler_lock = match mediautils::get_songbird(
         ctx,
         msg.guild(&ctx.cache).await.expect("No guild").id,
     )
@@ -92,8 +76,8 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     {
         Some(handler) => handler,
         None => {
-            voice::join(ctx, msg, args).await?;
-            let after_join_handler = match mediautils::get_songbird_manager(
+            voice::join(ctx, msg, args.clone()).await?;
+            let after_join_handler = match mediautils::get_songbird(
                 ctx,
                 msg.guild(&ctx.cache).await.expect("No guild").id,
             )
@@ -110,31 +94,66 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
 
     let mut handler = handler_lock.lock().await;
 
-    // Here, we use lazy restartable sources to make sure that we don't pay
-    // for decoding, playback on tracks which aren't actually live yet.
-    let source = match Restartable::ytdl(url, true).await {
-        Ok(source) => source,
-        Err(why) => {
-            println!("Err starting source: {:?}", why);
-
-            msgutils::check_msg(
-                msg.channel_id
-                    .send_message(ctx, |m: &mut CreateMessage| {
-                        msgutils::create_embed_message(
-                            m,
-                            &String::from("Error"),
-                            &String::from("Cannot get `ffmpeg`."),
-                            palette::RED,
-                            Some(msg),
-                        );
-                        m
-                    })
-                    .await,
-            );
-
-            return Ok(());
+    // https://stackoverflow.com/a/3809435/2621063
+    let valid_url = match Url::parse(&first_arg) {
+        Ok(_) => {
+            url = first_arg;
+            true
         }
+        Err(_) => false,
     };
+
+    let source;
+    if valid_url {
+        source = match Restartable::ytdl(url, true).await {
+            Ok(source) => source,
+            Err(why) => {
+                println!("Err starting source: {:?}", why);
+
+                msgutils::check_msg(
+                    msg.channel_id
+                        .send_message(ctx, |m: &mut CreateMessage| {
+                            msgutils::create_embed_message(
+                                m,
+                                &String::from("Error"),
+                                &String::from("Cannot get `ffmpeg`."),
+                                palette::RED,
+                                Some(msg),
+                            );
+                            m
+                        })
+                        .await,
+                );
+
+                return Ok(());
+            }
+        };
+    } else {
+        let query = args.raw().collect::<Vec<&str>>().join(" ");
+        source = match Restartable::ytdl_search(query, true).await {
+            Ok(source) => source,
+            Err(why) => {
+                println!("Err starting source: {:?}", why);
+
+                msgutils::check_msg(
+                    msg.channel_id
+                        .send_message(ctx, |m: &mut CreateMessage| {
+                            msgutils::create_embed_message(
+                                m,
+                                &String::from("Error"),
+                                &String::from("Cannot get `ffmpeg`."),
+                                palette::RED,
+                                Some(msg),
+                            );
+                            m
+                        })
+                        .await,
+                );
+
+                return Ok(());
+            }
+        };
+    }
 
     handler.enqueue_source(source.into());
 
@@ -144,7 +163,11 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                 msgutils::create_embed_message(
                     m,
                     &String::from("I put food on sticks 😎"),
-                    &format!("Position on stick: {}", handler.queue().len()),
+                    &format!(
+                        "Queued {}\n Position in queue: `{}`",
+                        mediautils::construct_title_string(&handler.queue().current().unwrap()),
+                        handler.queue().len()
+                    ),
                     palette::GREEN,
                     Some(msg),
                 );
@@ -161,8 +184,7 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
 #[only_in(guilds)]
 async fn skip(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
     if let Some(handler_lock) =
-        mediautils::get_songbird_manager(ctx, msg.guild(&ctx.cache).await.expect("No guild").id)
-            .await
+        mediautils::get_songbird(ctx, msg.guild(&ctx.cache).await.expect("No guild").id).await
     {
         let handler = handler_lock.lock().await;
         let queue = handler.queue();
@@ -209,8 +231,7 @@ async fn skip(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
 #[only_in(guilds)]
 async fn stop(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
     if let Some(handler_lock) =
-        mediautils::get_songbird_manager(ctx, msg.guild(&ctx.cache).await.expect("No guild").id)
-            .await
+        mediautils::get_songbird(ctx, msg.guild(&ctx.cache).await.expect("No guild").id).await
     {
         let handler = handler_lock.lock().await;
         let queue = handler.queue();
@@ -244,8 +265,7 @@ async fn stop(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
 #[only_in(guilds)]
 async fn pause(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
     if let Some(handler_lock) =
-        mediautils::get_songbird_manager(ctx, msg.guild(&ctx.cache).await.expect("No guild").id)
-            .await
+        mediautils::get_songbird(ctx, msg.guild(&ctx.cache).await.expect("No guild").id).await
     {
         let handler = handler_lock.lock().await;
         let queue = handler.queue();
@@ -261,8 +281,7 @@ async fn pause(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
 #[only_in(guilds)]
 async fn resume(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
     if let Some(handler_lock) =
-        mediautils::get_songbird_manager(ctx, msg.guild(&ctx.cache).await.expect("No guild").id)
-            .await
+        mediautils::get_songbird(ctx, msg.guild(&ctx.cache).await.expect("No guild").id).await
     {
         let handler = handler_lock.lock().await;
         let queue = handler.queue();
@@ -279,8 +298,7 @@ async fn resume(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
 #[only_in(guilds)]
 async fn nowplaying(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
     if let Some(handler_lock) =
-        mediautils::get_songbird_manager(ctx, msg.guild(&ctx.cache).await.expect("No guild").id)
-            .await
+        mediautils::get_songbird(ctx, msg.guild(&ctx.cache).await.expect("No guild").id).await
     {
         let handler = handler_lock.lock().await;
         let queue = handler.queue();
@@ -360,7 +378,7 @@ async fn seek(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     };
 
     if let Some(handler_lock) =
-        mediautils::get_songbird_manager(ctx, msg.guild(&ctx.cache).await.unwrap().id).await
+        mediautils::get_songbird(ctx, msg.guild(&ctx.cache).await.unwrap().id).await
     {
         let handler = handler_lock.lock().await;
         let queue = handler.queue();
@@ -408,11 +426,11 @@ async fn seek(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
 }
 
 #[command]
+#[aliases("nextup")]
 #[only_in(guilds)]
 async fn queue(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
     if let Some(handler_lock) =
-        mediautils::get_songbird_manager(ctx, msg.guild(&ctx.cache).await.expect("No guild").id)
-            .await
+        mediautils::get_songbird(ctx, msg.guild(&ctx.cache).await.expect("No guild").id).await
     {
         let handler = handler_lock.lock().await;
         let queue = handler.queue();
@@ -462,5 +480,12 @@ async fn queue(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
         );
     }
 
+    Ok(())
+}
+
+#[command]
+#[aliases("loop")]
+#[only_in(guilds)]
+async fn repeat(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
     Ok(())
 }

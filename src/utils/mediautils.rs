@@ -6,7 +6,7 @@ use songbird::{
     Call,
 };
 
-pub async fn get_songbird_manager(ctx: &Context, guild_id: GuildId) -> Option<Arc<Mutex<Call>>> {
+pub async fn get_songbird(ctx: &Context, guild_id: GuildId) -> Option<Arc<Mutex<Call>>> {
     let manager = songbird::get(ctx)
         .await
         .expect("Songbird Voice client placed in at initialization.")
@@ -16,14 +16,9 @@ pub async fn get_songbird_manager(ctx: &Context, guild_id: GuildId) -> Option<Ar
 }
 
 pub async fn construct_np_msg(track: &TrackHandle) -> String {
-    let default_unknown = &String::from("Unknown");
-    let track_info = track.metadata();
-    let track_title = track_info.title.as_ref().unwrap_or(default_unknown);
-    let track_artist = track_info.artist.as_ref().unwrap_or(default_unknown);
-    let track_url = track_info.source_url.as_ref().unwrap();
-    // theoretically track_url should never error because the only way for the bot to play something is with from a url.
+    let title_string = construct_title_string(track);
 
-    let track_length = track_info.duration.unwrap_or(Duration::new(0, 0));
+    let track_length = track.metadata().duration.unwrap_or(Duration::new(0, 0));
     let track_position = track
         .get_info()
         .await
@@ -58,7 +53,21 @@ pub async fn construct_np_msg(track: &TrackHandle) -> String {
         "#".repeat(progress_percentage) + &progress_bar[progress_percentage..progress_bar.len()];
 
     return format!(
-        "[**{} - {}**]({})\n{} / {} **`[{}]`**",
-        track_artist, track_title, track_url, track_pos_str, track_length_str, progress_bar
+        "{}\n{} / {} **`[{}]`**",
+        title_string, track_pos_str, track_length_str, progress_bar
+    );
+}
+
+pub fn construct_title_string(track: &TrackHandle) -> String {
+    let default_unknown = &String::from("Unknown");
+    let track_info = track.metadata();
+    let track_title = track_info.title.as_ref().unwrap_or(default_unknown);
+    let track_artist = track_info.artist.as_ref().unwrap_or(default_unknown);
+    let track_url = track_info.source_url.as_ref().unwrap();
+    // theoretically track_url should never error because the only way for the bot to play something is with from a url.
+
+    return format!(
+        "[**{} - {}**]({})",
+        track_artist, track_title, track_url
     );
 }
