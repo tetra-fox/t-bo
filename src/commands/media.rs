@@ -460,7 +460,7 @@ async fn queue(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
             let track_title = track_info.title.as_ref().unwrap_or(default_unknown);
             let track_artist = track_info.artist.as_ref().unwrap_or(default_unknown);
             let track_url = track_info.source_url.as_ref().unwrap();
-            
+
             if track_info == queue.current().unwrap().metadata() {
                 msg_content.push_str(&format!(
                     "**{}. [{} - {}]({}) - Now Playing**\n",
@@ -478,7 +478,6 @@ async fn queue(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
                     track_url
                 ));
             }
-
         }
 
         check_msg(

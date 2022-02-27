@@ -68,8 +68,8 @@ pub async fn construct_np_msg(track: &TrackHandle) -> String {
     let progress_percentage =
         ((track_position.as_secs() as f64 / track_length.as_secs() as f64) * 20.0) as usize;
 
-    progress_bar = "#".repeat(progress_percentage)
-        + &progress_bar[progress_percentage..progress_bar.len()];
+    progress_bar =
+        "#".repeat(progress_percentage) + &progress_bar[progress_percentage..progress_bar.len()];
 
     return format!(
         "[**{} - {}**]({})\n{} / {} **`[{}]`**",
