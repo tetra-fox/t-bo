@@ -82,6 +82,7 @@ pub async fn join(ctx: &Context, msg: &Message) -> CommandResult {
             notifiers::TrackEndNotifier {
                 chan_id,
                 http: send_http,
+                current_track: None,
             },
         );
     } else {
@@ -130,7 +131,7 @@ pub async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
                     })
                     .await,
             );
-            return Ok(())
+            return Ok(());
         }
 
         success_react(ctx, msg).await;

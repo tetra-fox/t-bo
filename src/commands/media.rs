@@ -13,12 +13,11 @@ use serenity::{
 };
 
 use songbird::input::restartable::Restartable;
-use songbird::EventContext::Track;
 
 #[command]
-#[aliases("play", "p", "bumpthis")]
+#[aliases("p", "bumpthis")]
 #[only_in(guilds)]
-async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
+async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     let mut url = match args.single::<String>() {
         Ok(url) => url,
         Err(_) => {
@@ -28,7 +27,7 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                         create_embed_message(
                             m,
                             &String::from("Error"),
-                            &String::from("Invalid syntax. Usage: `bo.queue <url|file>`"),
+                            &String::from("Invalid syntax. Usage: `bo.play <url|file>`"),
                             palette::RED,
                             Some(msg),
                         );
@@ -143,11 +142,7 @@ async fn queue(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                 create_embed_message(
                     m,
                     &String::from("I put food on sticks 😎"),
-                    &format!(
-                        "Now playing: {}.\nPosition on stick: {}",
-                        handler.queue().len(),
-                        handler.queue().len()
-                    ),
+                    &format!("Position on stick: {}", handler.queue().len()),
                     palette::GREEN,
                     Some(msg),
                 );
@@ -315,43 +310,14 @@ async fn nowplaying(ctx: &Context, msg: &Message, _args: Args) -> CommandResult 
 
         match queue.current() {
             Some(current_track) => {
-                let default_unknown = &String::from("Unknown");
-                let track_info = current_track.metadata();
-                let track_title = track_info.title.as_ref().unwrap_or(default_unknown);
-                let track_artist = track_info.artist.as_ref().unwrap_or(default_unknown);
-                let track_length = track_info.duration.unwrap_or(Duration::new(0, 0));
-                let track_position = Duration::new(0, 0);
-
-                // format track length
-                let track_length_str = match track_length.as_secs() {
-                    0 => String::from("00:00"),
-                    secs => {
-                        let minutes = secs / 60;
-                        let seconds = secs % 60;
-                        format!("{:02}:{:02}", minutes, seconds)
-                    }
-                };
-
-                // format track position
-                let track_pos_str = match track_position.as_secs() {
-                    0 => String::from("00:00"),
-                    secs => {
-                        let minutes = secs / 60;
-                        let seconds = secs % 60;
-                        format!("{:02}:{:02}", minutes, seconds)
-                    }
-                };
-
+                let msg_content = construct_np_msg(&current_track).await;
                 check_msg(
                     msg.channel_id
                         .send_message(ctx, |m: &mut CreateMessage| {
                             create_embed_message(
                                 m,
                                 &String::from("Now playing"),
-                                &format!(
-                                    "**{}** - **{}**\n{}/{}",
-                                    track_artist, track_title, track_pos_str, track_length_str
-                                ),
+                                &msg_content,
                                 palette::BLURPLE,
                                 Some(msg),
                             );
@@ -389,9 +355,10 @@ async fn seek(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     let (seek_time, seek_time_str): (Duration, String) = match args.single::<String>() {
         Ok(time) => {
             // parse string into duration
-                
+
             let (mins, secs) = time.split_at(2);
-            let toal_secs = mins.parse::<u64>().unwrap_or(0) * 60 + secs.parse::<u64>().unwrap_or(0);
+            let toal_secs =
+                mins.parse::<u64>().unwrap_or(0) * 60 + secs.parse::<u64>().unwrap_or(0);
             let time_duration = Duration::new(toal_secs, 0);
 
             (time_duration, time)
@@ -464,6 +431,70 @@ async fn seek(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                 );
             }
         }
+    }
+
+    Ok(())
+}
+
+#[command]
+#[only_in(guilds)]
+async fn queue(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
+    let guild = msg.guild(&ctx.cache).await.unwrap();
+    let guild_id = guild.id;
+
+    let manager = songbird::get(ctx)
+        .await
+        .expect("Songbird Voice client placed in at initialization.")
+        .clone();
+
+    if let Some(handler_lock) = manager.get(guild_id) {
+        let handler = handler_lock.lock().await;
+        let queue = handler.queue();
+
+        let mut msg_content = String::new();
+        let default_unknown = &String::from("Unknown");
+
+        // add each track to a new line in the message
+        for (i, track) in queue.current_queue().iter().enumerate() {
+            let track_info = track.metadata();
+            let track_title = track_info.title.as_ref().unwrap_or(default_unknown);
+            let track_artist = track_info.artist.as_ref().unwrap_or(default_unknown);
+            let track_url = track_info.source_url.as_ref().unwrap();
+            
+            if track_info == queue.current().unwrap().metadata() {
+                msg_content.push_str(&format!(
+                    "**{}. [{} - {}]({}) - Now Playing**\n",
+                    i + 1,
+                    track_artist,
+                    track_title,
+                    track_url
+                ));
+            } else {
+                msg_content.push_str(&format!(
+                    "{}. [{} - {}]({})\n",
+                    i + 1,
+                    track_artist,
+                    track_title,
+                    track_url
+                ));
+            }
+
+        }
+
+        check_msg(
+            msg.channel_id
+                .send_message(ctx, |m: &mut CreateMessage| {
+                    create_embed_message(
+                        m,
+                        &String::from("Queue"),
+                        &format!("\n{}", msg_content),
+                        palette::BLURPLE,
+                        Some(msg),
+                    );
+                    m
+                })
+                .await,
+        );
     }
 
     Ok(())

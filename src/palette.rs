@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub const BLURPLE: i32 = 0x5865F2;
 pub const GREEN: i32 = 0x57F287;
 pub const YELLOW: i32 = 0xFEE75C;
