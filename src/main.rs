@@ -1,4 +1,4 @@
-mod msgutils;
+mod utils;
 mod notifiers;
 mod palette;
 

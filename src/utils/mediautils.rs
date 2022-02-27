@@ -1,32 +1,18 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
-use serenity::{
-    builder::CreateMessage, client::Context, model::channel::Message, Result as SerenityResult,
+use serenity::{client::Context, prelude::Mutex, model::id::GuildId};
+use songbird::{
+    tracks::{TrackHandle, TrackState},
+    Call,
 };
-use songbird::tracks::{TrackHandle, TrackState};
 
-pub fn check_msg(result: SerenityResult<Message>) {
-    if let Err(why) = result {
-        println!("Error sending message: {:?}", why);
-    }
-}
-
-pub fn create_embed_message(
-    m: &mut CreateMessage,
-    title: &String,
-    description: &String,
-    color: i32,
-    reference_message: Option<&Message>,
-) {
-    if let Some(ref_msg) = reference_message {
-        m.reference_message(ref_msg);
-    }
-
-    m.embed(|e| e.title(title).description(description).color(color));
-}
-
-pub async fn success_react(ctx: &Context, msg: &Message) {
-    let _ = msg.react(&ctx.http, '👌').await;
+pub async fn get_songbird_manager(ctx: &Context, guild_id: GuildId) -> Option<Arc<Mutex<Call>>> {
+    let manager = songbird::get(ctx)
+        .await
+        .expect("Songbird Voice client placed in at initialization.")
+        .clone()
+        .get(guild_id);
+    manager
 }
 
 pub async fn construct_np_msg(track: &TrackHandle) -> String {

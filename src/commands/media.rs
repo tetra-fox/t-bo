@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use crate::msgutils::*;
 use crate::palette;
+use crate::utils::*;
 
 use super::voice;
 
@@ -21,10 +21,10 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     let mut url = match args.single::<String>() {
         Ok(url) => url,
         Err(_) => {
-            check_msg(
+            msgutils::check_msg(
                 msg.channel_id
                     .send_message(ctx, |m: &mut CreateMessage| {
-                        create_embed_message(
+                        msgutils::create_embed_message(
                             m,
                             &String::from("Error"),
                             &String::from("Invalid syntax. Usage: `bo.play <url|file>`"),
@@ -41,10 +41,10 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     };
 
     if !url.starts_with("http") && !url.eq("file") {
-        check_msg(
+        msgutils::check_msg(
             msg.channel_id
                 .send_message(ctx, |m: &mut CreateMessage| {
-                    create_embed_message(
+                    msgutils::create_embed_message(
                         m,
                         &String::from("Error"),
                         &String::from("Invalid URL."),
@@ -63,10 +63,10 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         url = match msg.attachments.first() {
             Some(attachment) => attachment.url.clone(),
             None => {
-                check_msg(
+                msgutils::check_msg(
                     msg.channel_id
                         .send_message(ctx, |m: &mut CreateMessage| {
-                            create_embed_message(
+                            msgutils::create_embed_message(
                                 m,
                                 &String::from("Error"),
                                 &String::from("No file attached."),
@@ -83,20 +83,22 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         };
     }
 
-    let guild = msg.guild(&ctx.cache).await.expect("No guild");
-    let guild_id = guild.id;
-
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Songbird Voice client placed in at initialization.")
-        .clone();
-
     // if not in voice channel, join command runner's voice channel
-    let handler_lock = match manager.get(guild_id) {
+    let handler_lock = match mediautils::get_songbird_manager(
+        ctx,
+        msg.guild(&ctx.cache).await.expect("No guild").id,
+    )
+    .await
+    {
         Some(handler) => handler,
         None => {
             voice::join(ctx, msg, args).await?;
-            let after_join_handler = match manager.get(guild_id) {
+            let after_join_handler = match mediautils::get_songbird_manager(
+                ctx,
+                msg.guild(&ctx.cache).await.expect("No guild").id,
+            )
+            .await
+            {
                 Some(handler) => handler,
                 None => {
                     return Ok(());
@@ -115,10 +117,10 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         Err(why) => {
             println!("Err starting source: {:?}", why);
 
-            check_msg(
+            msgutils::check_msg(
                 msg.channel_id
                     .send_message(ctx, |m: &mut CreateMessage| {
-                        create_embed_message(
+                        msgutils::create_embed_message(
                             m,
                             &String::from("Error"),
                             &String::from("Cannot get `ffmpeg`."),
@@ -136,10 +138,10 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
 
     handler.enqueue_source(source.into());
 
-    check_msg(
+    msgutils::check_msg(
         msg.channel_id
             .send_message(ctx, |m: &mut CreateMessage| {
-                create_embed_message(
+                msgutils::create_embed_message(
                     m,
                     &String::from("I put food on sticks 😎"),
                     &format!("Position on stick: {}", handler.queue().len()),
@@ -158,23 +160,18 @@ async fn play(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
 #[aliases("next")]
 #[only_in(guilds)]
 async fn skip(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
-    let guild = msg.guild(&ctx.cache).await.unwrap();
-    let guild_id = guild.id;
-
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Songbird Voice client placed in at initialization.")
-        .clone();
-
-    if let Some(handler_lock) = manager.get(guild_id) {
+    if let Some(handler_lock) =
+        mediautils::get_songbird_manager(ctx, msg.guild(&ctx.cache).await.expect("No guild").id)
+            .await
+    {
         let handler = handler_lock.lock().await;
         let queue = handler.queue();
         let _ = queue.skip();
 
-        check_msg(
+        msgutils::check_msg(
             msg.channel_id
                 .send_message(ctx, |m: &mut CreateMessage| {
-                    create_embed_message(
+                    msgutils::create_embed_message(
                         m,
                         &String::from("Skipped"),
                         &format!("{} in queue.", queue.len()),
@@ -186,10 +183,10 @@ async fn skip(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
                 .await,
         );
     } else {
-        check_msg(
+        msgutils::check_msg(
             msg.channel_id
                 .send_message(ctx, |m: &mut CreateMessage| {
-                    create_embed_message(
+                    msgutils::create_embed_message(
                         m,
                         &String::from("Error"),
                         &String::from(
@@ -211,25 +208,20 @@ async fn skip(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
 #[aliases("clear")]
 #[only_in(guilds)]
 async fn stop(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
-    let guild = msg.guild(&ctx.cache).await.unwrap();
-    let guild_id = guild.id;
-
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Songbird Voice client placed in at initialization.")
-        .clone();
-
-    if let Some(handler_lock) = manager.get(guild_id) {
+    if let Some(handler_lock) =
+        mediautils::get_songbird_manager(ctx, msg.guild(&ctx.cache).await.expect("No guild").id)
+            .await
+    {
         let handler = handler_lock.lock().await;
         let queue = handler.queue();
         let _ = queue.stop();
 
-        check_msg(msg.reply(&ctx.http, "Queue cleared.").await);
+        msgutils::check_msg(msg.reply(&ctx.http, "Queue cleared.").await);
     } else {
-        check_msg(
+        msgutils::check_msg(
             msg.channel_id
                 .send_message(ctx, |m: &mut CreateMessage| {
-                    create_embed_message(
+                    msgutils::create_embed_message(
                         m,
                         &String::from("Error"),
                         &String::from(
@@ -251,19 +243,14 @@ async fn stop(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
 #[aliases("chill")]
 #[only_in(guilds)]
 async fn pause(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
-    let guild = msg.guild(&ctx.cache).await.unwrap();
-    let guild_id = guild.id;
-
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Songbird Voice client placed in at initialization.")
-        .clone();
-
-    if let Some(handler_lock) = manager.get(guild_id) {
+    if let Some(handler_lock) =
+        mediautils::get_songbird_manager(ctx, msg.guild(&ctx.cache).await.expect("No guild").id)
+            .await
+    {
         let handler = handler_lock.lock().await;
         let queue = handler.queue();
         if let Ok(_) = queue.pause() {
-            success_react(ctx, msg).await;
+            msgutils::success_react(ctx, msg).await;
         }
     };
 
@@ -273,19 +260,14 @@ async fn pause(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
 #[command]
 #[only_in(guilds)]
 async fn resume(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
-    let guild = msg.guild(&ctx.cache).await.unwrap();
-    let guild_id = guild.id;
-
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Songbird Voice client placed in at initialization.")
-        .clone();
-
-    if let Some(handler_lock) = manager.get(guild_id) {
+    if let Some(handler_lock) =
+        mediautils::get_songbird_manager(ctx, msg.guild(&ctx.cache).await.expect("No guild").id)
+            .await
+    {
         let handler = handler_lock.lock().await;
         let queue = handler.queue();
         if let Ok(_) = queue.resume() {
-            success_react(ctx, msg).await;
+            msgutils::success_react(ctx, msg).await;
         }
     }
 
@@ -296,25 +278,20 @@ async fn resume(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
 #[aliases("np", "current")]
 #[only_in(guilds)]
 async fn nowplaying(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
-    let guild = msg.guild(&ctx.cache).await.unwrap();
-    let guild_id = guild.id;
-
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Songbird Voice client placed in at initialization.")
-        .clone();
-
-    if let Some(handler_lock) = manager.get(guild_id) {
+    if let Some(handler_lock) =
+        mediautils::get_songbird_manager(ctx, msg.guild(&ctx.cache).await.expect("No guild").id)
+            .await
+    {
         let handler = handler_lock.lock().await;
         let queue = handler.queue();
 
         match queue.current() {
             Some(current_track) => {
-                let msg_content = construct_np_msg(&current_track).await;
-                check_msg(
+                let msg_content = mediautils::construct_np_msg(&current_track).await;
+                msgutils::check_msg(
                     msg.channel_id
                         .send_message(ctx, |m: &mut CreateMessage| {
-                            create_embed_message(
+                            msgutils::create_embed_message(
                                 m,
                                 &String::from("Now playing"),
                                 &msg_content,
@@ -327,10 +304,10 @@ async fn nowplaying(ctx: &Context, msg: &Message, _args: Args) -> CommandResult 
                 );
             }
             _ => {
-                check_msg(
+                msgutils::check_msg(
                     msg.channel_id
                         .send_message(ctx, |m: &mut CreateMessage| {
-                            create_embed_message(
+                            msgutils::create_embed_message(
                                 m,
                                 &String::from("Now playing"),
                                 &String::from("Nothing"),
@@ -364,10 +341,10 @@ async fn seek(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
             (time_duration, time)
         }
         Err(_) => {
-            check_msg(
+            msgutils::check_msg(
                 msg.channel_id
                     .send_message(ctx, |m: &mut CreateMessage| {
-                        create_embed_message(
+                        msgutils::create_embed_message(
                             m,
                             &String::from("Error"),
                             &String::from("Invalid syntax. Use `bo.seek <time>` where `<time>` is format `mm:ss`."),
@@ -382,15 +359,9 @@ async fn seek(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         }
     };
 
-    let guild = msg.guild(&ctx.cache).await.unwrap();
-    let guild_id = guild.id;
-
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Songbird Voice client placed in at initialization.")
-        .clone();
-
-    if let Some(handler_lock) = manager.get(guild_id) {
+    if let Some(handler_lock) =
+        mediautils::get_songbird_manager(ctx, msg.guild(&ctx.cache).await.unwrap().id).await
+    {
         let handler = handler_lock.lock().await;
         let queue = handler.queue();
 
@@ -399,10 +370,10 @@ async fn seek(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                 if current_track.is_seekable() {
                     let _ = current_track.seek_time(seek_time);
                 }
-                check_msg(
+                msgutils::check_msg(
                     msg.channel_id
                         .send_message(ctx, |m: &mut CreateMessage| {
-                            create_embed_message(
+                            msgutils::create_embed_message(
                                 m,
                                 &String::from("Seek"),
                                 &format!("Seeked to {}", seek_time_str),
@@ -415,10 +386,10 @@ async fn seek(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                 );
             }
             _ => {
-                check_msg(
+                msgutils::check_msg(
                     msg.channel_id
                         .send_message(ctx, |m: &mut CreateMessage| {
-                            create_embed_message(
+                            msgutils::create_embed_message(
                                 m,
                                 &String::from("Error"),
                                 &String::from("Nothing is playing."),
@@ -439,15 +410,10 @@ async fn seek(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
 #[command]
 #[only_in(guilds)]
 async fn queue(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
-    let guild = msg.guild(&ctx.cache).await.unwrap();
-    let guild_id = guild.id;
-
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Songbird Voice client placed in at initialization.")
-        .clone();
-
-    if let Some(handler_lock) = manager.get(guild_id) {
+    if let Some(handler_lock) =
+        mediautils::get_songbird_manager(ctx, msg.guild(&ctx.cache).await.expect("No guild").id)
+            .await
+    {
         let handler = handler_lock.lock().await;
         let queue = handler.queue();
 
@@ -480,10 +446,10 @@ async fn queue(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
             }
         }
 
-        check_msg(
+        msgutils::check_msg(
             msg.channel_id
                 .send_message(ctx, |m: &mut CreateMessage| {
-                    create_embed_message(
+                    msgutils::create_embed_message(
                         m,
                         &String::from("Queue"),
                         &format!("\n{}", msg_content),

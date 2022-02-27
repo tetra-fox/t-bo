@@ -1,6 +1,6 @@
-use crate::msgutils::*;
 use crate::notifiers;
 use crate::palette;
+use crate::utils::*;
 
 use serenity::{
     builder::CreateMessage,
@@ -25,10 +25,10 @@ pub async fn join(ctx: &Context, msg: &Message) -> CommandResult {
     let connect_to = match channel_id {
         Some(channel) => channel,
         None => {
-            check_msg(
+            msgutils::check_msg(
                 msg.channel_id
                     .send_message(ctx, |m: &mut CreateMessage| {
-                        create_embed_message(
+                        msgutils::create_embed_message(
                             m,
                             &String::from("Error"),
                             &String::from("You must be in a voice channel to use this command."),
@@ -52,10 +52,10 @@ pub async fn join(ctx: &Context, msg: &Message) -> CommandResult {
     let (handle_lock, success) = manager.join(guild_id, connect_to).await;
 
     if let Ok(_channel) = success {
-        check_msg(
+        msgutils::check_msg(
             msg.channel_id
                 .send_message(ctx, |m: &mut CreateMessage| {
-                    create_embed_message(
+                    msgutils::create_embed_message(
                         m,
                         &String::from("Connected"),
                         &format!("Joined {}", connect_to.mention()),
@@ -86,7 +86,7 @@ pub async fn join(ctx: &Context, msg: &Message) -> CommandResult {
             },
         );
     } else {
-        check_msg(msg.reply(&ctx.http, "Error joining the channel").await);
+        msgutils::check_msg(msg.reply(&ctx.http, "Error joining the channel").await);
     }
 
     Ok(())
@@ -107,7 +107,7 @@ pub async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
 
     if has_handler {
         if let Err(e) = manager.remove(guild_id).await {
-            check_msg(
+            msgutils::check_msg(
                 msg.channel_id
                     .say(&ctx.http, format!("Failed: {:?}", e))
                     .await,
@@ -115,7 +115,7 @@ pub async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
         }
 
         if msg.content.contains("fuckoff") {
-            check_msg(
+            msgutils::check_msg(
                 msg.channel_id
                     .send_message(&ctx.http, |m: &mut CreateMessage| {
                         m.reference_message(msg);
@@ -134,9 +134,9 @@ pub async fn leave(ctx: &Context, msg: &Message) -> CommandResult {
             return Ok(());
         }
 
-        success_react(ctx, msg).await;
+        msgutils::success_react(ctx, msg).await;
     } else {
-        success_react(ctx, msg).await;
+        msgutils::success_react(ctx, msg).await;
     }
 
     Ok(())
@@ -156,7 +156,7 @@ pub async fn mute(ctx: &Context, msg: &Message) -> CommandResult {
     let handler_lock = match manager.get(guild_id) {
         Some(handler) => handler,
         None => {
-            check_msg(msg.reply(ctx, "Not in a voice channel").await);
+            msgutils::check_msg(msg.reply(ctx, "Not in a voice channel").await);
 
             return Ok(());
         }
@@ -166,24 +166,24 @@ pub async fn mute(ctx: &Context, msg: &Message) -> CommandResult {
 
     if handler.is_mute() {
         if let Err(e) = handler.mute(false).await {
-            check_msg(
+            msgutils::check_msg(
                 msg.channel_id
                     .say(&ctx.http, format!("Failed: {:?}", e))
                     .await,
             );
         }
 
-        success_react(ctx, msg).await;
+        msgutils::success_react(ctx, msg).await;
     } else {
         if let Err(e) = handler.mute(true).await {
-            check_msg(
+            msgutils::check_msg(
                 msg.channel_id
                     .say(&ctx.http, format!("Failed: {:?}", e))
                     .await,
             );
         }
 
-        success_react(ctx, msg).await;
+        msgutils::success_react(ctx, msg).await;
     }
 
     Ok(())
@@ -203,7 +203,7 @@ pub async fn deafen(ctx: &Context, msg: &Message) -> CommandResult {
     let handler_lock = match manager.get(guild_id) {
         Some(handler) => handler,
         None => {
-            check_msg(msg.reply(ctx, "Not in a voice channel").await);
+            msgutils::check_msg(msg.reply(ctx, "Not in a voice channel").await);
 
             return Ok(());
         }
@@ -213,24 +213,24 @@ pub async fn deafen(ctx: &Context, msg: &Message) -> CommandResult {
 
     if handler.is_deaf() {
         if let Err(e) = handler.deafen(false).await {
-            check_msg(
+            msgutils::check_msg(
                 msg.channel_id
                     .say(&ctx.http, format!("Failed: {:?}", e))
                     .await,
             );
         }
 
-        success_react(ctx, msg).await;
+        msgutils::success_react(ctx, msg).await;
     } else {
         if let Err(e) = handler.deafen(true).await {
-            check_msg(
+            msgutils::check_msg(
                 msg.channel_id
                     .say(&ctx.http, format!("Failed: {:?}", e))
                     .await,
             );
         }
 
-        success_react(ctx, msg).await;
+        msgutils::success_react(ctx, msg).await;
     }
 
     Ok(())
