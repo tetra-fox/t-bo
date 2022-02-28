@@ -1,6 +1,9 @@
-mod utils;
+#![feature(async_closure)]
 mod notifiers;
 mod palette;
+mod utils;
+mod checks;
+// mod tboresult;
 
 mod commands;
 use commands::{media::*, voice::*};
@@ -51,7 +54,7 @@ async fn main() {
 
     tracing_subscriber::fmt::init();
 
-    let token = env::var("DISCORD_TOKEN").expect("No token");
+    let token = env::var("DISCORD_TOKEN").expect("DISCORD_TOKEN is not present in the environment");
 
     let http = Http::new_with_token(&token);
 
