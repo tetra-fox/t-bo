@@ -16,6 +16,7 @@ pub struct TrackEndNotifier {
 }
 
 #[async_trait]
+// notify chat on song change
 impl VoiceEventHandler for TrackEndNotifier {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
         if let EventContext::Track(_) = ctx {
