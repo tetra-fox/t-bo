@@ -3,10 +3,12 @@ mod notifiers;
 mod palette;
 mod utils;
 mod checks;
+mod command_handlers;
 // mod tboresult;
 
+#[path ="commands.rs"]
 mod commands;
-use commands::{media::*, voice::*};
+use commands::*;
 
 use std::{collections::HashSet, env, sync::Arc};
 use tracing::{error, info};
@@ -43,7 +45,7 @@ impl TypeMapKey for ShardManagerContainer {
 
 #[group]
 #[commands(
-    join, leave, mute, deafen, queue, play, skip, repeat, seek, stop, pause, resume, nowplaying
+    join, leave, mute, deafen, play
 )]
 
 struct General;

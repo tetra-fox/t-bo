@@ -1,9 +1,17 @@
-use std::{sync::Arc, time::Duration};
+use std::{any::Any, sync::Arc, time::Duration};
 
-use serenity::{client::Context, model::id::GuildId, prelude::Mutex};
+use serenity::{
+    client::Context,
+    model::{
+        channel::{ChannelType, Message},
+        id::{ChannelId, GuildId, UserId},
+    },
+    prelude::Mutex,
+};
 use songbird::{
+    input::Metadata,
     tracks::{TrackHandle, TrackState},
-    Call, input::Metadata,
+    Call,
 };
 
 pub async fn get_songbird(ctx: &Context, guild_id: GuildId) -> Option<Arc<Mutex<Call>>> {
@@ -61,7 +69,13 @@ pub async fn construct_np_msg(track: &TrackHandle) -> String {
 pub fn construct_title_string(metadata: &Metadata) -> String {
     let default_unknown = "Unknown";
     let mut track_title = metadata.title.as_deref().unwrap_or(default_unknown);
-    let track_artist = metadata.channel.as_deref().unwrap_or(default_unknown);
+
+    // get Channel (usually for YouTube), if None, get Artist (other platforms), if None, then "Unknown"
+    let track_artist = metadata
+        .channel
+        .as_deref()
+        .unwrap_or(metadata.artist.as_deref().unwrap_or(default_unknown));
+
     let track_url = metadata.source_url.as_deref().unwrap();
     // theoretically track_url should never error because the only way for the bot to play something is with from a url.
 
@@ -70,4 +84,19 @@ pub fn construct_title_string(metadata: &Metadata) -> String {
     }
 
     return format!("[{} - {}]({})", track_artist, track_title, track_url);
+}
+
+pub async fn get_voice_channel_of_user(ctx: &Context, msg: &Message) -> Option<ChannelId> {
+    match msg
+        .guild(&ctx.cache)
+        .await
+        .expect("No guild")
+        .voice_states
+        .get(&msg.author.id)
+        .unwrap()
+        .channel_id
+    {
+        Some(channel) => return Some(channel),
+        None => return None,
+    }
 }
